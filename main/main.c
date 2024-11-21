@@ -6,6 +6,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/event_groups.h"
 #include "esp_system.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -13,9 +14,13 @@
 
 #include "ble_m3.h"
 
+EventGroupHandle_t g_event_group;
+
 void app_main(void)
 {
     esp_err_t ret;
+
+    g_event_group = xEventGroupCreate();
 
     ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {

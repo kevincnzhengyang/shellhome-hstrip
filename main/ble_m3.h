@@ -14,9 +14,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
 #include "esp_err.h"
 #include "esp_system.h"
 #include "esp_log.h"
+
+#define BLE_M3_UNBIND_BIT   BIT0
+#define BLE_M3_LOST_BIT     BIT1
+#define BLE_M3_CONN_BIT     BIT2
 
 #define BLE_M3_KEY_BUTT     0
 #define BLE_M3_KEY_LEFT     (1<<0)

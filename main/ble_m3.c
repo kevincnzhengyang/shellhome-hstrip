@@ -2,7 +2,7 @@
  * @Author      : kevin.z.y <kevin.cn.zhengyang@gmail.com>
  * @Date        : 2024-11-20 21:10:06
  * @LastEditors : kevin.z.y <kevin.cn.zhengyang@gmail.com>
- * @LastEditTime: 2024-11-21 17:07:52
+ * @LastEditTime: 2024-11-21 22:41:43
  * @FilePath    : /shellhome-hstrip/main/ble_m3.c
  * @Description : ble remote panel
  * Copyright (c) 2024 by Zheng, Yang, All Rights Reserved.
@@ -14,6 +14,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
+#include "nvs_flash.h"
 #include "esp_system.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
@@ -53,6 +54,8 @@
 
 #include "ble_m3.h"
 
+extern EventGroupHandle_t g_event_group;
+
 typedef uint8_t ble_m3_pdu_t[3];
 
 typedef enum {
@@ -65,6 +68,11 @@ typedef enum {
 typedef struct {
     BLE_M3_STATUS       status;
     uint8_t            key_set;
+    uint8_t             loaded;
+    uint8_t             forgot;
+    nvs_handle_t    nvs_handle;
+    esp_hid_scan_result_t   m3;
+    esp_hidh_dev_t        *dev;
 } ble_m3_cb;
 
 ble_m3_pdu_t m3_sep_3     = {0x01, 0x18, 0x80};
@@ -104,9 +112,37 @@ static ble_m3_cb g_cb;
 
 static const char *TAG = "BLE_M3";
 
+static esp_err_t load_m3_from_nvs(void) {
+    esp_err_t err;
+    size_t required_size = sizeof(esp_hid_scan_result_t);
+
+    if (pdTRUE == g_cb.loaded) return ESP_OK;
+
+    err = nvs_get_blob(g_cb.nvs_handle, TAG, &(g_cb.m3), &required_size);
+    if (ESP_OK == err) {
+        g_cb.loaded = pdTRUE;
+        g_cb.forgot = pdFALSE;
+    } else if (ESP_ERR_NVS_NOT_FOUND == err) {
+        g_cb.loaded = pdFALSE;
+    }
+    g_cb.forgot = pdTRUE;
+    return err;
+}
+
 static esp_err_t init_input_generic(void) {
+    memset(&g_cb, 0, sizeof (ble_m3_cb));
+
     g_cb.status = BLE_M3_BUTT;
     g_cb.key_set = M3_KEY_SET_INIT;
+
+    esp_err_t err;
+
+    // Open
+    err = nvs_open("ShellHome", NVS_READWRITE, &g_cb.nvs_handle);
+    ESP_ERROR_CHECK(err);
+
+    err = load_m3_from_nvs();
+    if (ESP_ERR_NVS_NOT_FOUND != err && ESP_OK != err) return err;
     return ESP_OK;
 }
 
@@ -179,8 +215,7 @@ Detected:
 }
 
 
-static char *bda2str(esp_bd_addr_t bda, char *str, size_t size)
-{
+static char *bda2str(esp_bd_addr_t bda, char *str, size_t size) {
     if (bda == NULL || str == NULL || size < 18) {
         return NULL;
     }
@@ -191,8 +226,8 @@ static char *bda2str(esp_bd_addr_t bda, char *str, size_t size)
     return str;
 }
 
-static void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *event_data)
-{
+static void hidh_callback(void *handler_args, esp_event_base_t base,
+                          int32_t id, void *event_data) {
     esp_hidh_event_t event = (esp_hidh_event_t)id;
     esp_hidh_event_data_t *param = (esp_hidh_event_data_t *)event_data;
     uint8_t input_key = BLE_M3_KEY_BUTT;
@@ -203,6 +238,7 @@ static void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id,
             const uint8_t *bda = esp_hidh_dev_bda_get(param->open.dev);
             ESP_LOGI(TAG, ESP_BD_ADDR_STR " OPEN: %s", ESP_BD_ADDR_HEX(bda), esp_hidh_dev_name_get(param->open.dev));
             esp_hidh_dev_dump(param->open.dev, stdout);
+            xEventGroupSetBits(g_event_group, BLE_M3_CONN_BIT);
         } else {
             ESP_LOGE(TAG, " OPEN failed!");
         }
@@ -236,6 +272,8 @@ static void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id,
     case ESP_HIDH_CLOSE_EVENT: {
         const uint8_t *bda = esp_hidh_dev_bda_get(param->close.dev);
         ESP_LOGI(TAG, ESP_BD_ADDR_STR " CLOSE: %s", ESP_BD_ADDR_HEX(bda), esp_hidh_dev_name_get(param->close.dev));
+        esp_hidh_dev_close(g_cb.dev);
+        xEventGroupSetBits(g_event_group, BLE_M3_LOST_BIT);
         break;
     }
     default:
@@ -246,10 +284,15 @@ static void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id,
 
 #define SCAN_DURATION_SECONDS 5
 
-static void hid_demo_task(void *pvParameters)
-{
+static esp_err_t scan_ble_m3(void) {
+    esp_err_t ret = ESP_FAIL;
+    esp_err_t err = ESP_FAIL;
+
     size_t results_len = 0;
     esp_hid_scan_result_t *results = NULL;
+
+    size_t required_size = sizeof(esp_hid_scan_result_t);
+
     ESP_LOGI(TAG, "SCAN...");
     //start scan for HID devices
     esp_hid_scan(SCAN_DURATION_SECONDS, &results_len, &results);
@@ -290,14 +333,64 @@ static void hid_demo_task(void *pvParameters)
             r = r->next;
         }
         if (cr) {
-            //open the last result
-            ESP_LOGI(TAG, "open the last result");
-            esp_hidh_dev_open(cr->bda, cr->transport, cr->ble.addr_type);
-            init_input_generic();
+            // save the result into nvs
+            if (pdTRUE == g_cb.forgot) {
+                ESP_LOGI(TAG, "save the last result");
+                err = nvs_set_blob(g_cb.nvs_handle, TAG, cr, required_size);
+                if (ESP_OK != err) {
+                    ESP_LOGI(TAG, "failed to save BLE M3 to nvs %d", err);
+                    ret = err;
+                } else {
+                    nvs_commit(g_cb.nvs_handle);
+                    g_cb.forgot = pdFALSE;
+                    g_cb.loaded = pdFALSE;  // need reload
+                    ret = ESP_OK;
+                }
+            }
         }
+        ESP_LOGI(TAG, "free results");
         //free the results
         esp_hid_scan_results_free(results);
     }
+    return ret;
+}
+
+static void hid_m3_task(void *pvParameters)
+{
+    while (1) {
+        if (pdFALSE == g_cb.loaded) load_m3_from_nvs();
+
+        // scan again
+        if (ESP_OK != scan_ble_m3()) {
+            ESP_LOGW(TAG, "can't find BLE M3");
+            vTaskDelay(10000/portTICK_PERIOD_MS);
+            continue;
+        } else {
+            // open device
+            g_cb.dev = esp_hidh_dev_open(g_cb.m3.bda, g_cb.m3.transport, g_cb.m3.ble.addr_type);
+
+            while (1) {
+                EventBits_t bits = xEventGroupWaitBits(g_event_group,
+                                        BLE_M3_UNBIND_BIT|BLE_M3_LOST_BIT,
+                                        pdTRUE, pdFAIL, portMAX_DELAY);
+                if (bits & BLE_M3_UNBIND_BIT) {
+                    // clear NVS
+                    g_cb.loaded = pdFALSE;
+                    g_cb.forgot = pdTRUE;
+                    nvs_erase_key(g_cb.nvs_handle, TAG);
+                    nvs_commit(g_cb.nvs_handle);
+                    break;  // connect & scan if in need
+                } else if (bits & BLE_M3_LOST_BIT) {
+                    // lost M3, try to scan again
+                    break;
+                } else {
+                    continue;   // wait event
+                }
+            }
+        }
+    }
+    ESP_LOGI(TAG, "task closing");
+    nvs_close(g_cb.nvs_handle);
     vTaskDelete(NULL);
 }
 
@@ -316,6 +409,9 @@ void ble_store_config_init(void);
 /* start BT HID Host */
 esp_err_t ble_m3_host_start(void) {
     char bda_str[18] = {0};
+
+    init_input_generic();
+
 #if HID_HOST_MODE == HIDH_IDLE_MODE
     ESP_LOGE(TAG, "Please turn on BT HID host or BLE!");
     return;
@@ -330,7 +426,7 @@ esp_err_t ble_m3_host_start(void) {
         .event_stack_size = 4096,
         .callback_arg = NULL,
     };
-    ESP_ERROR_CHECK( esp_hidh_init(&config) );
+    ESP_ERROR_CHECK(esp_hidh_init(&config));
 
     ESP_LOGI(TAG, "Own address:[%s]", bda2str((uint8_t *)esp_bt_dev_get_address(), bda_str, sizeof(bda_str)));
 #if CONFIG_BT_NIMBLE_ENABLED
@@ -346,6 +442,6 @@ esp_err_t ble_m3_host_start(void) {
         ESP_LOGE(TAG, "esp_nimble_enable failed: %d", ret);
     }
 #endif
-    xTaskCreate(&hid_demo_task, "hid_task", 6 * 1024, NULL, 2, NULL);
+    xTaskCreate(&hid_m3_task, "hid_task", 6 * 1024, NULL, 2, NULL);
     return ESP_OK;
 }

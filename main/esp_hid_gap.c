@@ -2,7 +2,7 @@
  * @Author      : kevin.z.y <kevin.cn.zhengyang@gmail.com>
  * @Date        : 2024-11-20 16:57:21
  * @LastEditors : kevin.z.y <kevin.cn.zhengyang@gmail.com>
- * @LastEditTime: 2024-11-21 17:04:21
+ * @LastEditTime: 2024-11-21 20:49:42
  * @FilePath    : /shellhome-hstrip/main/esp_hid_gap.c
  * @Description :
  * Copyright (c) 2024 by Zheng, Yang, All Rights Reserved.
@@ -450,7 +450,8 @@ static void handle_ble_device_result(struct ble_scan_result_evt_param *scan_rst)
     }
     GAP_DBG_PRINTF("\n");
 
-    if (uuid == ESP_GATT_UUID_HID_SVC || 0 == strcmp(name, "BLE-M3")) {
+    // if (uuid == ESP_GATT_UUID_HID_SVC)) {
+    if (0 == strcmp(name, "BLE-M3")) {
         add_ble_scan_result(scan_rst->bda, scan_rst->ble_addr_type, appearance, adv_name, adv_name_len, scan_rst->rssi);
         ESP_LOGI(TAG, "add device:%s", name);
     }
