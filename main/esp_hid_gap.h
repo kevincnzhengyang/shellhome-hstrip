@@ -49,7 +49,7 @@
 
 #ifdef __cplusplus
 extern "C" {
-#endif
+#endif /* __cplusplus */
 
 typedef struct esp_hidh_scan_result_s {
     struct esp_hidh_scan_result_s *next;
@@ -96,6 +96,6 @@ const char *ble_addr_type_str(esp_ble_addr_type_t ble_addr_type);
 
 #ifdef __cplusplus
 }
-#endif
+#endif /* __cplusplus */
 
 #endif /* _ESP_HIDH_GAP_H_ */

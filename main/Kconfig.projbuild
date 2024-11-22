@@ -1,17 +1,53 @@
-menu "HID Example Configuration"
-    config EXAMPLE_SSP_ENABLED
-        bool "Secure Simple Pairing"
-        depends on BT_CLASSIC_ENABLED
-        default y
-        help
-            This enables the Secure Simple Pairing. If disable this option,
-            Bluedroid will only support Legacy Pairing
+menu "ShellHome HID LED Strip config"
 
-    config EXAMPLE_HID_HOST_ENABLED
-        bool "Enable Example HID Host"
-        depends on BT_NIMBLE_ENABLED
-        default y
-        select BT_NIMBLE_HID_SERVICE
-        help
-            This enables Nimble HID Host
+menu "HID Device Configuration"
+    config STATUS_LED_GPIO_NUM
+        int "GPIO number for Status LED"
+        range 0 39
+        default 3 if IDF_TARGET_ESP32C3
+        default 32 if IDF_TARGET_ESP32
+
+    config HID_DEVICE_NAME
+        string "Name of HID Device to control the LED Strip"
+        default "BLE-M3"
+endmenu
+
+menu "LED Strip Configuration"
+    config LED_STRIP_RESOLUTION_HZ
+        int "Resolution for LED strip"
+        default 10000000
+    config CHANGE_RGB_STEP
+        int "step of RGB changing"
+        default 5
+    menuconfig USING_STRIP_1
+        bool "LED Strip 1"
+        default n
+        if USING_STRIP_1
+            config STRIP1_GPIO_NUM
+                int "GPIO number for LED Stip 1"
+                range 0 39
+                default 10 if IDF_TARGET_ESP32C3
+                default 23 if IDF_TARGET_ESP32
+            config STRIP1_LED_NUM
+                int "number of LEDs"
+                default 49
+        endif
+    menuconfig USING_STRIP_2
+        bool "LED Strip 2"
+        default n
+        if USING_STRIP_2
+            config STRIP2_GPIO_NUM
+                int "GPIO number for LED Stip 2"
+                range 0 39
+                default 9 if IDF_TARGET_ESP32C3
+                default 21 if IDF_TARGET_ESP32
+            config STRIP2_LED_NUM
+                int "number of LEDs"
+                default 29
+            config STRIP2_INTV
+                int "interval of changing in ms"
+                default 100
+        endif
+endmenu
+
 endmenu

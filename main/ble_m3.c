@@ -2,7 +2,7 @@
  * @Author      : kevin.z.y <kevin.cn.zhengyang@gmail.com>
  * @Date        : 2024-11-20 21:10:06
  * @LastEditors : kevin.z.y <kevin.cn.zhengyang@gmail.com>
- * @LastEditTime: 2024-11-21 22:41:43
+ * @LastEditTime: 2024-11-22 16:59:35
  * @FilePath    : /shellhome-hstrip/main/ble_m3.c
  * @Description : ble remote panel
  * Copyright (c) 2024 by Zheng, Yang, All Rights Reserved.
@@ -53,6 +53,15 @@
 #include "esp_hid_gap.h"
 
 #include "ble_m3.h"
+#include "node_status.h"
+
+#define BLE_M3_KEY_BUTT     0
+#define BLE_M3_KEY_LEFT     (1<<0)
+#define BLE_M3_KEY_UP       (1<<1)
+#define BLE_M3_KEY_RIGHT    (1<<2)
+#define BLE_M3_KEY_DOWN     (1<<3)
+#define BLE_M3_KEY_LIKE     (1<<4)
+#define BLE_M3_KEY_TAKE     (1<<5)
 
 extern EventGroupHandle_t g_event_group;
 
@@ -137,7 +146,7 @@ static esp_err_t init_input_generic(void) {
 
     esp_err_t err;
 
-    // Open
+    // Open NVS
     err = nvs_open("ShellHome", NVS_READWRITE, &g_cb.nvs_handle);
     ESP_ERROR_CHECK(err);
 
@@ -238,6 +247,7 @@ static void hidh_callback(void *handler_args, esp_event_base_t base,
             const uint8_t *bda = esp_hidh_dev_bda_get(param->open.dev);
             ESP_LOGI(TAG, ESP_BD_ADDR_STR " OPEN: %s", ESP_BD_ADDR_HEX(bda), esp_hidh_dev_name_get(param->open.dev));
             esp_hidh_dev_dump(param->open.dev, stdout);
+            shn_state_status(NODE_RUNNING);
             xEventGroupSetBits(g_event_group, BLE_M3_CONN_BIT);
         } else {
             ESP_LOGE(TAG, " OPEN failed!");
@@ -256,7 +266,29 @@ static void hidh_callback(void *handler_args, esp_event_base_t base,
         if (5 == param->input.report_id || 4 == param->input.report_id) {
             if (ESP_OK == check_input_generic(param->input.data, &input_key)) {
                 ESP_LOGI(TAG, " host get key %d", (int)input_key);
-                // TODO invoke
+                switch (input_key) {
+                    case BLE_M3_KEY_LEFT:
+                        xEventGroupSetBits(g_event_group, BLE_M3_PREV_BIT);
+                        break;
+                    case BLE_M3_KEY_UP:
+                        xEventGroupSetBits(g_event_group, BLE_M3_MORE_BIT);
+                        break;
+                    case BLE_M3_KEY_RIGHT:
+                        xEventGroupSetBits(g_event_group, BLE_M3_NEXT_BIT);
+                        break;
+                    case BLE_M3_KEY_DOWN:
+                        xEventGroupSetBits(g_event_group, BLE_M3_LESS_BIT);
+                        break;
+                    case BLE_M3_KEY_LIKE:
+                        xEventGroupSetBits(g_event_group, BLE_M3_SAvE_BIT);
+                        break;
+                    case BLE_M3_KEY_TAKE:
+                        xEventGroupSetBits(g_event_group, BLE_M3_SWITCH_BIT);
+                        break;
+                    default:
+                        ESP_LOGE(TAG, "Unknown key %d", (int)input_key);
+                        break;
+                }
             }
         }
         break;
@@ -294,6 +326,8 @@ static esp_err_t scan_ble_m3(void) {
     size_t required_size = sizeof(esp_hid_scan_result_t);
 
     ESP_LOGI(TAG, "SCAN...");
+    shn_state_status(NODE_SCANNING);
+
     //start scan for HID devices
     esp_hid_scan(SCAN_DURATION_SECONDS, &results_len, &results);
     ESP_LOGI(TAG, "SCAN: %u results", results_len);
@@ -371,9 +405,9 @@ static void hid_m3_task(void *pvParameters)
 
             while (1) {
                 EventBits_t bits = xEventGroupWaitBits(g_event_group,
-                                        BLE_M3_UNBIND_BIT|BLE_M3_LOST_BIT,
+                                        BLE_M3_FORGET_BIT|BLE_M3_LOST_BIT,
                                         pdTRUE, pdFAIL, portMAX_DELAY);
-                if (bits & BLE_M3_UNBIND_BIT) {
+                if (bits & BLE_M3_FORGET_BIT) {
                     // clear NVS
                     g_cb.loaded = pdFALSE;
                     g_cb.forgot = pdTRUE;
@@ -411,6 +445,8 @@ esp_err_t ble_m3_host_start(void) {
     char bda_str[18] = {0};
 
     init_input_generic();
+    shn_state_status(NODE_POWER_ON);    // Power On
+
 
 #if HID_HOST_MODE == HIDH_IDLE_MODE
     ESP_LOGE(TAG, "Please turn on BT HID host or BLE!");

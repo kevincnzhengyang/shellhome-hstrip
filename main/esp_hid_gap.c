@@ -2,7 +2,7 @@
  * @Author      : kevin.z.y <kevin.cn.zhengyang@gmail.com>
  * @Date        : 2024-11-20 16:57:21
  * @LastEditors : kevin.z.y <kevin.cn.zhengyang@gmail.com>
- * @LastEditTime: 2024-11-21 20:49:42
+ * @LastEditTime: 2024-11-22 14:49:15
  * @FilePath    : /shellhome-hstrip/main/esp_hid_gap.c
  * @Description :
  * Copyright (c) 2024 by Zheng, Yang, All Rights Reserved.
@@ -451,7 +451,7 @@ static void handle_ble_device_result(struct ble_scan_result_evt_param *scan_rst)
     GAP_DBG_PRINTF("\n");
 
     // if (uuid == ESP_GATT_UUID_HID_SVC)) {
-    if (0 == strcmp(name, "BLE-M3")) {
+    if (0 == strcmp(name, CONFIG_HID_DEVICE_NAME)) {
         add_ble_scan_result(scan_rst->bda, scan_rst->ble_addr_type, appearance, adv_name, adv_name_len, scan_rst->rssi);
         ESP_LOGI(TAG, "add device:%s", name);
     }
@@ -477,7 +477,6 @@ static void bt_gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_para
         handle_bt_device_result(&param->disc_res);
         break;
     }
-#if (CONFIG_EXAMPLE_SSP_ENABLED)
     case ESP_BT_GAP_KEY_NOTIF_EVT:
         ESP_LOGI(TAG, "BT GAP KEY_NOTIF passkey:%"PRIu32, param->key_notif.passkey);
         break;
@@ -489,7 +488,6 @@ static void bt_gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_para
     case ESP_BT_GAP_KEY_REQ_EVT:
         ESP_LOGI(TAG, "BT GAP KEY_REQ_EVT Please enter passkey!");
         break;
-#endif
     case ESP_BT_GAP_MODE_CHG_EVT:
         ESP_LOGI(TAG, "BT GAP MODE_CHG_EVT mode:%d", param->mode_chg.mode);
         break;
@@ -519,12 +517,11 @@ static void bt_gap_event_handler(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_para
 static esp_err_t init_bt_gap(void)
 {
     esp_err_t ret;
-#if (CONFIG_EXAMPLE_SSP_ENABLED)
     /* Set default parameters for Secure Simple Pairing */
     esp_bt_sp_param_t param_type = ESP_BT_SP_IOCAP_MODE;
     esp_bt_io_cap_t iocap = ESP_BT_IO_CAP_IO;
     esp_bt_gap_set_security_param(param_type, &iocap, sizeof(uint8_t));
-#endif
+
     /*
      * Set default parameters for Legacy Pairing
      * Use variable pin, input pin code when pairing
@@ -1065,9 +1062,6 @@ static esp_err_t init_low_level(uint8_t mode)
     }
 
     esp_bluedroid_config_t bluedroid_cfg = BT_BLUEDROID_INIT_CONFIG_DEFAULT();
-#if (CONFIG_EXAMPLE_SSP_ENABLED == false)
-    bluedroid_cfg.ssp_en = false;
-#endif
     ret = esp_bluedroid_init_with_cfg(&bluedroid_cfg);
     if (ret) {
         ESP_LOGE(TAG, "esp_bluedroid_init failed: %d", ret);

@@ -10,6 +10,11 @@
 #ifndef BLE_M3_H
 #define BLE_M3_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif  /* __cplusplus */
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,19 +26,22 @@
 #include "esp_system.h"
 #include "esp_log.h"
 
-#define BLE_M3_UNBIND_BIT   BIT0
+#define BLE_M3_FORGET_BIT   BIT0
 #define BLE_M3_LOST_BIT     BIT1
 #define BLE_M3_CONN_BIT     BIT2
 
-#define BLE_M3_KEY_BUTT     0
-#define BLE_M3_KEY_LEFT     (1<<0)
-#define BLE_M3_KEY_UP       (1<<1)
-#define BLE_M3_KEY_RIGHT    (1<<2)
-#define BLE_M3_KEY_DOWN     (1<<3)
-#define BLE_M3_KEY_LIKE     (1<<4)
-#define BLE_M3_KEY_TAKE     (1<<5)
+#define BLE_M3_PREV_BIT     BIT3
+#define BLE_M3_NEXT_BIT     BIT4
+#define BLE_M3_MORE_BIT     BIT5
+#define BLE_M3_LESS_BIT     BIT6
+#define BLE_M3_SAvE_BIT     BIT7
+#define BLE_M3_SWITCH_BIT   BIT8
 
 /* start BT HID Host */
 esp_err_t ble_m3_host_start(void);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
 
 #endif /* BLE_M3_H */

@@ -12,7 +12,9 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
+#include "node_status.h"
 #include "ble_m3.h"
+#include "sh_led_strip.h"
 
 EventGroupHandle_t g_event_group;
 
@@ -29,7 +31,19 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    ret = ble_m3_host_start();
-    ESP_ERROR_CHECK(ret);
+    // init Status
+    shn_init_status();
+
+    // start LED Strip
+    ESP_ERROR_CHECK(led_strip_start());
+
+    // start HID Host for BLE M3
+    ESP_ERROR_CHECK(ble_m3_host_start());
+
+    // flush status LED
+    while (1) {
+        shn_flush_status();
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+    }
 
 }
