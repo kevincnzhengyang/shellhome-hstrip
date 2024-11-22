@@ -2,7 +2,7 @@
  * @Author      : kevin.z.y <kevin.cn.zhengyang@gmail.com>
  * @Date        : 2024-11-20 21:10:06
  * @LastEditors : kevin.z.y <kevin.cn.zhengyang@gmail.com>
- * @LastEditTime: 2024-11-22 16:59:35
+ * @LastEditTime: 2024-11-22 19:26:00
  * @FilePath    : /shellhome-hstrip/main/ble_m3.c
  * @Description : ble remote panel
  * Copyright (c) 2024 by Zheng, Yang, All Rights Reserved.
@@ -280,7 +280,7 @@ static void hidh_callback(void *handler_args, esp_event_base_t base,
                         xEventGroupSetBits(g_event_group, BLE_M3_LESS_BIT);
                         break;
                     case BLE_M3_KEY_LIKE:
-                        xEventGroupSetBits(g_event_group, BLE_M3_SAvE_BIT);
+                        xEventGroupSetBits(g_event_group, BLE_M3_SAVE_BIT);
                         break;
                     case BLE_M3_KEY_TAKE:
                         xEventGroupSetBits(g_event_group, BLE_M3_SWITCH_BIT);

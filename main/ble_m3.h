@@ -34,7 +34,7 @@ extern "C" {
 #define BLE_M3_NEXT_BIT     BIT4
 #define BLE_M3_MORE_BIT     BIT5
 #define BLE_M3_LESS_BIT     BIT6
-#define BLE_M3_SAvE_BIT     BIT7
+#define BLE_M3_SAVE_BIT     BIT7
 #define BLE_M3_SWITCH_BIT   BIT8
 
 /* start BT HID Host */

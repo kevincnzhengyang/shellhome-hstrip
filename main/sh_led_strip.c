@@ -2,7 +2,7 @@
  * @Author      : kevin.z.y <kevin.cn.zhengyang@gmail.com>
  * @Date        : 2023-09-24 23:05:20
  * @LastEditors : kevin.z.y <kevin.cn.zhengyang@gmail.com>
- * @LastEditTime: 2024-11-22 17:46:09
+ * @LastEditTime: 2024-11-22 19:52:00
  * @FilePath    : /shellhome-hstrip/main/sh_led_strip.c
  * @Description :
  * Copyright (c) 2023 by Zheng, Yang, All Rights Reserved.
@@ -163,10 +163,11 @@ static esp_err_t stop_running(void) {
 static esp_err_t start_running(void) {
     // start Strips
     all_set_pixel();
+    ESP_LOGI(LS_TAG, "LED strip1 set");
 
     // start Strip2
     esp_timer_create_args_t strip_timer = {
-        .arg = (void *)&(g_led_strips.led_strip2),
+        .arg = (void *)&g_led_strips,
         .callback = marquee_cb,
         .dispatch_method = ESP_TIMER_TASK
     };
@@ -199,11 +200,14 @@ static esp_err_t led_strip_init(void) {
     memset(&g_led_strips, 0, sizeof(g_led_strips));
     g_led_strips.running = pdFALSE;
 
+    ESP_LOGI(LS_TAG, "init ...");
+
     // Open NVS
     esp_err_t err = nvs_open("ShellHome", NVS_READWRITE, &g_led_strips.nvs_handle);
     ESP_ERROR_CHECK(err);
 
     // load RGB
+    ESP_LOGI(LS_TAG, "load ...");
     size_t required_size = sizeof(uint32_t) * 3;
     err = nvs_get_blob(g_led_strips.nvs_handle, LS_TAG, g_led_strips.rgb, &required_size);
     if (ESP_ERR_NVS_NOT_FOUND == err) {
@@ -215,11 +219,13 @@ static esp_err_t led_strip_init(void) {
     }
     ESP_ERROR_CHECK(err);
 
+    ESP_LOGI(LS_TAG, "config ...");
     // LED strip general initialization
     led_strip_config_t strip_config1 = {
         .strip_gpio_num = CONFIG_STRIP1_GPIO_NUM,       // The GPIO connected to the LED strip's data line
         .max_leds = CONFIG_STRIP1_LED_NUM,              // The number of LEDs in the strip,
-        .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_RGB,       // Pixel format of your LED strip
+        // .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,       // Pixel format of your LED strip
+        .led_pixel_format = LED_PIXEL_FORMAT_GRB,       // Pixel format of your LED strip
         .led_model = LED_MODEL_WS2812,                  // LED strip model
         .flags.invert_out = false,                      // whether to invert the output signal
     };
@@ -238,7 +244,8 @@ static esp_err_t led_strip_init(void) {
     led_strip_config_t strip_config2 = {
         .strip_gpio_num = CONFIG_STRIP2_GPIO_NUM,       // The GPIO connected to the LED strip's data line
         .max_leds = CONFIG_STRIP2_LED_NUM,              // The number of LEDs in the strip,
-        .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_RGB,       // Pixel format of your LED strip
+        // .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,       // Pixel format of your LED strip
+        .led_pixel_format = LED_PIXEL_FORMAT_GRB,       // Pixel format of your LED strip
         .led_model = LED_MODEL_WS2812,                  // LED strip model
         .flags.invert_out = false,                      // whether to invert the output signal
     };
@@ -253,46 +260,57 @@ static esp_err_t led_strip_init(void) {
                                              &(g_led_strips.led_strip2)));
     ESP_LOGI(LS_TAG, "Created LED strip 2 object with RMT backend");
 
+    stop_running();
+
     return ESP_OK;
 }
 
 
 static void led_strip_task(void *pvParameters)
 {
+    ESP_LOGI(LS_TAG, "svc ...");
     while (1) {
         EventBits_t bits = xEventGroupWaitBits(g_event_group,
-                                BLE_M3_PREV_BIT|BLE_M3_NEXT_BIT|BLE_M3_MORE_BIT|BLE_M3_LESS_BIT|BLE_M3_SAvE_BIT|BLE_M3_SWITCH_BIT,
+                                BLE_M3_PREV_BIT|BLE_M3_NEXT_BIT|BLE_M3_MORE_BIT|BLE_M3_LESS_BIT|BLE_M3_SAVE_BIT|BLE_M3_SWITCH_BIT,
                                 pdTRUE, pdFAIL, portMAX_DELAY);
         if (bits & BLE_M3_PREV_BIT) {
             // previous, increase R
+            ESP_LOGI(LS_TAG, "increase R");
             g_led_strips.rgb[0] += CONFIG_CHANGE_RGB_STEP;
+            g_led_strips.rgb[0] &= 0xFF;
             all_set_pixel();
         } else if (bits & BLE_M3_NEXT_BIT) {
             // next, increase B
+            ESP_LOGI(LS_TAG, "increase B");
             g_led_strips.rgb[2] += CONFIG_CHANGE_RGB_STEP;
+            g_led_strips.rgb[2] &= 0xFF;
             all_set_pixel();
         } else if (bits & BLE_M3_MORE_BIT) {
             // more, increase G
+            ESP_LOGI(LS_TAG, "increase G");
             g_led_strips.rgb[1] += CONFIG_CHANGE_RGB_STEP;
+            g_led_strips.rgb[1] &= 0xFF;
             all_set_pixel();
         } else if (bits & BLE_M3_LESS_BIT) {
             // TODO
 
-        } else if (bits & BLE_M3_SAvE_BIT) {
+        } else if (bits & BLE_M3_SAVE_BIT) {
             // save
+            ESP_LOGI(LS_TAG, "Save to NVS");
             save_rgb_to_nvs();
         } else if (bits & BLE_M3_SWITCH_BIT) {
             // on/off
             if (pdTRUE == g_led_strips.running) {
-                g_led_strips.running = pdFALSE;
+                ESP_LOGI(LS_TAG, "Turn Off");
                 stop_running();
             } else {
-                g_led_strips.running = pdTRUE;
+                ESP_LOGI(LS_TAG, "Turn On");
                 start_running();
             }
         } else {
             ESP_LOGE(LS_TAG, "Unknown Bit set %d", (int)bits);
         }
+        vTaskDelay(1000/portTICK_PERIOD_MS);
     }
 
     ESP_LOGI(LS_TAG, "task closing");
