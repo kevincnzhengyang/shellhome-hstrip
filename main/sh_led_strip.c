@@ -2,7 +2,7 @@
  * @Author      : kevin.z.y <kevin.cn.zhengyang@gmail.com>
  * @Date        : 2023-09-24 23:05:20
  * @LastEditors : kevin.z.y <kevin.cn.zhengyang@gmail.com>
- * @LastEditTime: 2024-11-22 19:52:00
+ * @LastEditTime: 2024-11-23 18:10:12
  * @FilePath    : /shellhome-hstrip/main/sh_led_strip.c
  * @Description :
  * Copyright (c) 2023 by Zheng, Yang, All Rights Reserved.
@@ -45,6 +45,30 @@ static uint8_t  const SinValue[256]={	128,   131,   134,   137,   140,   143,   
                                 112,   115,   118,   121,   125,   128
 };
 
+// RGB definitions
+typedef uint8_t RGB_DEF[3];
+
+static RGB_DEF g_rgb[] = {
+    {255, 255, 255},        // whilte
+    {255,   0,   0},
+    {  0, 255,   0},
+    {  0,   0, 255},
+    {255, 255,   0},
+    {255,   0, 255},
+    {  0, 255, 255},
+    {142, 207, 201},
+    {255, 190, 122},
+    {190, 184, 220},
+    { 40, 120, 181},
+    {154, 201, 219},
+    {248, 172, 140},
+    { 47, 127, 193},
+    {150, 195, 125},
+    {243, 210, 102},
+    {225, 136, 132},
+    {  5, 185, 226}
+};
+
 // LED Strip
 typedef struct {
     led_strip_handle_t    led_strip1;       // LED Strip1
@@ -53,7 +77,7 @@ typedef struct {
     nvs_handle_t          nvs_handle;
     bool                     running;       // marquee or breath running flag
     uint8_t                    count;       // count for marquee or breath
-    uint32_t                  rgb[3];       // RGB of LED Strip1
+    uint32_t               rgb_index;       // RGB index
 } LED_Strip_Stru;
 
 static const char *LS_TAG = "LED_STRIP";
@@ -75,17 +99,17 @@ extern EventGroupHandle_t g_event_group;
 static esp_err_t all_set_pixel(void) {
     for (int i = 0; i < CONFIG_STRIP1_LED_NUM; i++) {
         ESP_ERROR_CHECK(led_strip_set_pixel(g_led_strips.led_strip1, i,
-                                g_led_strips.rgb[0],
-                                g_led_strips.rgb[1],
-                                g_led_strips.rgb[2]));
+                                g_rgb[g_led_strips.rgb_index][0],
+                                g_rgb[g_led_strips.rgb_index][1],
+                                g_rgb[g_led_strips.rgb_index][2]));
     }
     /* Refresh the strip to send data */
     ESP_ERROR_CHECK(led_strip_refresh(g_led_strips.led_strip1));
 
-    ESP_LOGI(LS_TAG, "LED strip set RGB %ld,%ld,%ld",
-                                g_led_strips.rgb[0],
-                                g_led_strips.rgb[1],
-                                g_led_strips.rgb[2]);
+    ESP_LOGI(LS_TAG, "LED strip set RGB %d,%d,%d",
+                                g_rgb[g_led_strips.rgb_index][0],
+                                g_rgb[g_led_strips.rgb_index][1],
+                                g_rgb[g_led_strips.rgb_index][2]);
     return ESP_OK;
 }
 
@@ -181,10 +205,7 @@ static esp_err_t start_running(void) {
 }
 
 static esp_err_t save_rgb_to_nvs(void) {
-    size_t required_size = sizeof(uint32_t) * 3;
-
-    required_size = sizeof(uint32_t) * 3;
-    esp_err_t err = nvs_set_blob(g_led_strips.nvs_handle, LS_TAG, g_led_strips.rgb, required_size);
+    esp_err_t err = nvs_set_u32(g_led_strips.nvs_handle, LS_TAG, g_led_strips.rgb_index);
     nvs_commit(g_led_strips.nvs_handle);
     ESP_LOGI(LS_TAG, "Save RGB");
     return err;
@@ -208,13 +229,10 @@ static esp_err_t led_strip_init(void) {
 
     // load RGB
     ESP_LOGI(LS_TAG, "load ...");
-    size_t required_size = sizeof(uint32_t) * 3;
-    err = nvs_get_blob(g_led_strips.nvs_handle, LS_TAG, g_led_strips.rgb, &required_size);
+    err = nvs_get_u32(g_led_strips.nvs_handle, LS_TAG, &g_led_strips.rgb_index);
     if (ESP_ERR_NVS_NOT_FOUND == err) {
         // set default and save
-        g_led_strips.rgb[0] = 255u;
-        g_led_strips.rgb[1] = 153u;
-        g_led_strips.rgb[2] = 10u;
+        g_led_strips.rgb_index = 0;
         err = save_rgb_to_nvs();
     }
     ESP_ERROR_CHECK(err);
@@ -275,25 +293,22 @@ static void led_strip_task(void *pvParameters)
                                 pdTRUE, pdFAIL, portMAX_DELAY);
         if (bits & BLE_M3_PREV_BIT) {
             // previous, increase R
-            ESP_LOGI(LS_TAG, "increase R");
-            g_led_strips.rgb[0] += CONFIG_CHANGE_RGB_STEP;
-            g_led_strips.rgb[0] &= 0xFF;
-            all_set_pixel();
+            ESP_LOGI(LS_TAG, "prev");
         } else if (bits & BLE_M3_NEXT_BIT) {
             // next, increase B
-            ESP_LOGI(LS_TAG, "increase B");
-            g_led_strips.rgb[2] += CONFIG_CHANGE_RGB_STEP;
-            g_led_strips.rgb[2] &= 0xFF;
-            all_set_pixel();
+            ESP_LOGI(LS_TAG, "next");
         } else if (bits & BLE_M3_MORE_BIT) {
-            // more, increase G
-            ESP_LOGI(LS_TAG, "increase G");
-            g_led_strips.rgb[1] += CONFIG_CHANGE_RGB_STEP;
-            g_led_strips.rgb[1] &= 0xFF;
+            // more
+            ESP_LOGI(LS_TAG, "more");
+            g_led_strips.rgb_index -= 1;
+            g_led_strips.rgb_index &= 0x0F;
             all_set_pixel();
         } else if (bits & BLE_M3_LESS_BIT) {
-            // TODO
-
+            // less
+            ESP_LOGI(LS_TAG, "les");
+            g_led_strips.rgb_index += 1;
+            g_led_strips.rgb_index &= 0x0F;
+            all_set_pixel();
         } else if (bits & BLE_M3_SAVE_BIT) {
             // save
             ESP_LOGI(LS_TAG, "Save to NVS");

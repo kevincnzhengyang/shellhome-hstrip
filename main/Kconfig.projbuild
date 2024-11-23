@@ -16,9 +16,6 @@ menu "LED Strip Configuration"
     config LED_STRIP_RESOLUTION_HZ
         int "Resolution for LED strip"
         default 10000000
-    config CHANGE_RGB_STEP
-        int "step of RGB changing"
-        default 5
     menuconfig USING_STRIP_1
         bool "LED Strip 1"
         default n

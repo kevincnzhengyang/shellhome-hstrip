@@ -2,7 +2,7 @@
  * @Author      : kevin.z.y <kevin.cn.zhengyang@gmail.com>
  * @Date        : 2024-11-20 21:10:06
  * @LastEditors : kevin.z.y <kevin.cn.zhengyang@gmail.com>
- * @LastEditTime: 2024-11-22 19:26:00
+ * @LastEditTime: 2024-11-23 19:21:45
  * @FilePath    : /shellhome-hstrip/main/ble_m3.c
  * @Description : ble remote panel
  * Copyright (c) 2024 by Zheng, Yang, All Rights Reserved.
@@ -40,6 +40,8 @@
 #include "nimble/nimble_port_freertos.h"
 #define ESP_BD_ADDR_STR         "%02x:%02x:%02x:%02x:%02x:%02x"
 #define ESP_BD_ADDR_HEX(addr)   addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]
+// 2a:07:98:04:24:05
+// 2a:07:98:02:c1:13
 #else
 #include "esp_bt_defs.h"
 #include "esp_gap_ble_api.h"
@@ -80,22 +82,23 @@ typedef struct {
     uint8_t             loaded;
     uint8_t             forgot;
     nvs_handle_t    nvs_handle;
+    esp_bd_addr_t    saved_bda;
     esp_hid_scan_result_t   m3;
     esp_hidh_dev_t        *dev;
 } ble_m3_cb;
 
-ble_m3_pdu_t m3_sep_3     = {0x01, 0x18, 0x80};
-ble_m3_pdu_t m3_sep_4     = {0xff, 0x17, 0x80};
-ble_m3_pdu_t m3_sep_56    = {0x01, 0xf8, 0x7f};
+static ble_m3_pdu_t m3_sep_3     = {0x01, 0x18, 0x80};
+static ble_m3_pdu_t m3_sep_4     = {0xff, 0x17, 0x80};
+static ble_m3_pdu_t m3_sep_56    = {0x01, 0xf8, 0x7f};
 
-ble_m3_pdu_t m3_signal_1  = {0x28, 0x80, 0x11};
-ble_m3_pdu_t m3_signal_2  = {0x3c, 0x80, 0x0c};
-ble_m3_pdu_t m3_signal_4  = {0xae, 0x8f, 0x11};
-ble_m3_pdu_t m3_signal_8  = {0x3c, 0x40, 0xec};
-ble_m3_pdu_t m3_signal_16 = {0xa0, 0x30, 0xe8};
-ble_m3_pdu_t m3_signal_32 = {0xaa, 0x70, 0xf8};
+static ble_m3_pdu_t m3_signal_1  = {0x28, 0x80, 0x11};
+static ble_m3_pdu_t m3_signal_2  = {0x3c, 0x80, 0x0c};
+static ble_m3_pdu_t m3_signal_4  = {0xae, 0x8f, 0x11};
+static ble_m3_pdu_t m3_signal_8  = {0x3c, 0x40, 0xec};
+static ble_m3_pdu_t m3_signal_16 = {0xa0, 0x30, 0xe8};
+static ble_m3_pdu_t m3_signal_32 = {0xaa, 0x70, 0xf8};
 
-ble_m3_pdu_t m3_confirm   = {0x01, 0x00, 0x00};     // mouse
+static ble_m3_pdu_t m3_confirm   = {0x01, 0x00, 0x00};     // mouse
 
 
 static ble_m3_cb g_cb;
@@ -123,18 +126,21 @@ static const char *TAG = "BLE_M3";
 
 static esp_err_t load_m3_from_nvs(void) {
     esp_err_t err;
-    size_t required_size = sizeof(esp_hid_scan_result_t);
+    size_t required_size = sizeof(esp_bd_addr_t);
 
     if (pdTRUE == g_cb.loaded) return ESP_OK;
 
-    err = nvs_get_blob(g_cb.nvs_handle, TAG, &(g_cb.m3), &required_size);
+    err = nvs_get_blob(g_cb.nvs_handle, TAG, &(g_cb.saved_bda), &required_size);
     if (ESP_OK == err) {
+        ESP_LOGI(TAG, "load from NVS");
+        ESP_LOGI(TAG, ESP_BD_ADDR_STR, ESP_BD_ADDR_HEX(g_cb.saved_bda));
         g_cb.loaded = pdTRUE;
         g_cb.forgot = pdFALSE;
     } else if (ESP_ERR_NVS_NOT_FOUND == err) {
+        ESP_LOGI(TAG, "not found in NVS");
         g_cb.loaded = pdFALSE;
+        g_cb.forgot = pdTRUE;
     }
-    g_cb.forgot = pdTRUE;
     return err;
 }
 
@@ -151,6 +157,7 @@ static esp_err_t init_input_generic(void) {
     ESP_ERROR_CHECK(err);
 
     err = load_m3_from_nvs();
+
     if (ESP_ERR_NVS_NOT_FOUND != err && ESP_OK != err) return err;
     return ESP_OK;
 }
@@ -323,7 +330,7 @@ static esp_err_t scan_ble_m3(void) {
     size_t results_len = 0;
     esp_hid_scan_result_t *results = NULL;
 
-    size_t required_size = sizeof(esp_hid_scan_result_t);
+    size_t required_size = sizeof(esp_bd_addr_t);
 
     ESP_LOGI(TAG, "SCAN...");
     shn_state_status(NODE_SCANNING);
@@ -370,15 +377,29 @@ static esp_err_t scan_ble_m3(void) {
             // save the result into nvs
             if (pdTRUE == g_cb.forgot) {
                 ESP_LOGI(TAG, "save the last result");
-                err = nvs_set_blob(g_cb.nvs_handle, TAG, cr, required_size);
+                err = nvs_set_blob(g_cb.nvs_handle, TAG, &cr->bda, required_size);
                 if (ESP_OK != err) {
                     ESP_LOGI(TAG, "failed to save BLE M3 to nvs %d", err);
                     ret = err;
                 } else {
                     nvs_commit(g_cb.nvs_handle);
                     g_cb.forgot = pdFALSE;
-                    g_cb.loaded = pdFALSE;  // need reload
+                    g_cb.loaded = pdTRUE;
+                    ESP_LOGI(TAG, ESP_BD_ADDR_STR, ESP_BD_ADDR_HEX(cr->bda));
+                    memcpy(&g_cb.m3, cr, sizeof(esp_hid_scan_result_t));
+                    memcpy(&g_cb.saved_bda, &cr->bda, sizeof(esp_bd_addr_t));
                     ret = ESP_OK;
+                }
+            } else {
+                // check if it's the saved one
+                ESP_LOGI(TAG, ESP_BD_ADDR_STR " <-> " ESP_BD_ADDR_STR, ESP_BD_ADDR_HEX(g_cb.saved_bda), ESP_BD_ADDR_HEX(cr->bda));
+                if (0 == memcmp(&cr->bda, &g_cb.saved_bda, sizeof(esp_bd_addr_t))) {
+                    memcpy(&g_cb.m3, cr, sizeof(esp_hid_scan_result_t));
+                    ESP_LOGI(TAG, "find the correct BLE-M3");
+                    ret = ESP_OK;
+                } else {
+                    ESP_LOGE(TAG, "Wrong BLE-M3");
+                    ret = ESP_FAIL;
                 }
             }
         }
